@@ -14,7 +14,7 @@ from Models import ParkingModel
 from GetStatusThread import GetStatusThread
 
 last_update_time = datetime.now()
-BATCH_SIZE = 7
+BATCH_SIZE = 3
 blp = Blueprint("parkings", __name__, description="operations on parkings.")
 
 
