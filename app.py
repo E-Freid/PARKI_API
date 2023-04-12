@@ -13,7 +13,7 @@ from Resources.Parking import blp as ParkingBluepint
 
 def create_app(db_url=None):
     app = Flask(__name__)
-    cors = CORS(app, origins=["http://localhost:3000"], supports_credentials=True)
+    CORS(app)
 
     load_dotenv()
     app.config["PROPAGATE_EXCEPTIONS"] = True
