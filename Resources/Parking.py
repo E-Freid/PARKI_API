@@ -116,7 +116,6 @@ class FreeParkingList(MethodView):
 
 
 @blp.route("/statuses")
-@blp.route("/statuses")
 class UpdateStatuses(MethodView):
     def post(self):
         global last_update_time
@@ -124,23 +123,16 @@ class UpdateStatuses(MethodView):
         time_diff = current_time - last_update_time
         if time_diff >= timedelta(milliseconds=3):
             parkings = ParkingModel.query.filter(~ParkingModel.status.in_(["פעיל", "אין מידע"])).all()
-            batch_size = BATCH_SIZE
 
-            for parking_batch in chunks(parkings, batch_size):
-                threads = []
-                for parking in parking_batch:
-                    thread = GetStatusThread(parking.park_id)
-                    thread.start()
-                    threads.append(thread)
-                for thread in threads:
-                    thread.join()
-                    parking = ParkingModel.query.filter_by(park_id=thread.parking_id).first()
-                    parking.status = thread.result
-                    try:
-                        db.session.add(parking)
-                        db.session.commit()
-                    except SQLAlchemyError:
-                        abort(500, message="An error occurred while updating the parking.")
+            for parking in parkings:
+                status_thread = GetStatusThread(parking.park_id)
+                status_thread.run()
+                parking.status = status_thread.result
+                try:
+                    db.session.add(parking)
+                    db.session.commit()
+                except SQLAlchemyError:
+                    abort(500, message="An error occurred while updating the parking.")
 
             last_update_time = current_time
             return {"message": "Statuses updated successfully."}, 200
