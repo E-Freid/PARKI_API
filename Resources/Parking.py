@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from itertools import islice
 from geopy.distance import great_circle
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 from db import db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -133,6 +134,8 @@ class UpdateStatuses(MethodView):
                     db.session.commit()
                 except SQLAlchemyError:
                     abort(500, message="An error occurred while updating the parking.")
+
+            time.sleep(1)
 
             last_update_time = current_time
             return {"message": "Statuses updated successfully."}, 200
