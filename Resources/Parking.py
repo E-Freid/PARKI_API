@@ -6,6 +6,7 @@ from schemas import ParkingSchema, UpdateParkingSchema
 from datetime import datetime, timedelta
 from itertools import islice
 from geopy.distance import great_circle
+from concurrent.futures import ThreadPoolExecutor
 
 from db import db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -124,21 +125,20 @@ class UpdateStatuses(MethodView):
             parkings = ParkingModel.query.all()
             batch_size = BATCH_SIZE
 
-            for parking_batch in chunks(parkings, batch_size):
-                threads = []
-                for parking in parking_batch:
-                    thread = GetStatusThread(parking.park_id)
-                    thread.start()
-                    threads.append(thread)
-                for thread in threads:
-                    thread.join()
-                    parking = ParkingModel.query.filter_by(park_id=thread.parking_id).first()
-                    parking.status = thread.result
-                    try:
-                        db.session.add(parking)
-                        db.session.commit()
-                    except SQLAlchemyError:
-                        abort(500, message="An error occurred while updating the parking.")
+            def update_parking_status(parking):
+                thread = GetStatusThread(parking.park_id)
+                thread.start()
+                thread.join()
+                parking.status = thread.result
+                try:
+                    db.session.add(parking)
+                    db.session.commit()
+                except SQLAlchemyError:
+                    abort(500, message="An error occurred while updating the parking.")
+
+            with ThreadPoolExecutor(max_workers=batch_size) as executor:
+                for parking_batch in chunks(parkings, batch_size):
+                    executor.map(update_parking_status, parking_batch)
 
             last_update_time = current_time
             return {"message": "Statuses updated successfully."}, 200
