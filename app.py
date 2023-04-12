@@ -38,4 +38,4 @@ def create_app(db_url=None):
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True)
+    app.run()
