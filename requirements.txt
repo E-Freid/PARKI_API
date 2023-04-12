@@ -1,0 +1,12 @@
+flask
+flask-sqlalchemy
+sqlalchemy
+python-dotenv
+flask-smorest
+gunicorn
+flask_migrate
+psycopg2-binary
+requests
+bs4
+geopy
+flask-cors
