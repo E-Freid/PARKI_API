@@ -120,7 +120,7 @@ class UpdateStatuses(MethodView):
         global last_update_time
         current_time = datetime.now()
         time_diff = current_time - last_update_time
-        if time_diff >= timedelta(minutes=10):
+        if time_diff >= timedelta(minutes=3):
             parkings = ParkingModel.query.all()
             batch_size = BATCH_SIZE
 
