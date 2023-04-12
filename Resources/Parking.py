@@ -116,29 +116,31 @@ class FreeParkingList(MethodView):
 
 
 @blp.route("/statuses")
+@blp.route("/statuses")
 class UpdateStatuses(MethodView):
     def post(self):
         global last_update_time
         current_time = datetime.now()
         time_diff = current_time - last_update_time
-        if time_diff >= timedelta(minutes=3):
-            parkings = ParkingModel.query.all()
+        if time_diff >= timedelta(milliseconds=3):
+            parkings = ParkingModel.query.filter(~ParkingModel.status.in_(["פעיל", "אין מידע"])).all()
             batch_size = BATCH_SIZE
 
-            def update_parking_status(parking):
-                thread = GetStatusThread(parking.park_id)
-                thread.start()
-                thread.join()
-                parking.status = thread.result
-                try:
-                    db.session.add(parking)
-                    db.session.commit()
-                except SQLAlchemyError:
-                    abort(500, message="An error occurred while updating the parking.")
-
-            with ThreadPoolExecutor(max_workers=batch_size) as executor:
-                for parking_batch in chunks(parkings, batch_size):
-                    executor.map(update_parking_status, parking_batch)
+            for parking_batch in chunks(parkings, batch_size):
+                threads = []
+                for parking in parking_batch:
+                    thread = GetStatusThread(parking.park_id)
+                    thread.start()
+                    threads.append(thread)
+                for thread in threads:
+                    thread.join()
+                    parking = ParkingModel.query.filter_by(park_id=thread.parking_id).first()
+                    parking.status = thread.result
+                    try:
+                        db.session.add(parking)
+                        db.session.commit()
+                    except SQLAlchemyError:
+                        abort(500, message="An error occurred while updating the parking.")
 
             last_update_time = current_time
             return {"message": "Statuses updated successfully."}, 200
