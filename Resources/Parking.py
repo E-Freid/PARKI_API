@@ -4,9 +4,7 @@ from flask_smorest import Blueprint, abort
 from flask.views import MethodView
 from schemas import ParkingSchema, UpdateParkingSchema
 from datetime import datetime, timedelta
-from itertools import islice
 from geopy.distance import great_circle
-from concurrent.futures import ThreadPoolExecutor
 import time
 
 from db import db
@@ -30,13 +28,9 @@ def sort_parkings_by_location(parkings, lat, lon):
             abort(400, message="Invalid latitude or longitude.")
 
 
-def chunks(iterable, size):
-    iterator = iter(iterable)
-    while True:
-        chunk = list(islice(iterator, size))
-        if not chunk:
-            break
-        yield chunk
+def calculate_distance(parking, lat, lon):
+    return great_circle((parking.latitude, parking.longitude), (lat, lon)).km
+
 
 
 @cross_origin()
@@ -118,26 +112,34 @@ class FreeParkingList(MethodView):
 
 @blp.route("/statuses")
 class UpdateStatuses(MethodView):
+    @blp.response(200, ParkingSchema(many=True))
     def post(self):
-        global last_update_time
-        current_time = datetime.now()
-        time_diff = current_time - last_update_time
-        if time_diff >= timedelta(milliseconds=3):
-            parkings = ParkingModel.query.filter(~ParkingModel.status.in_(["פעיל", "אין מידע"])).all()
+        lat = request.args.get("lat")
+        lon = request.args.get("lon")
+        if not lat or not lon:
+            abort(400, message="Latitude and longitude are required.")
 
-            for parking in parkings:
-                status_thread = GetStatusThread(parking.park_id)
-                status_thread.run()
-                parking.status = status_thread.result
-                try:
-                    db.session.add(parking)
-                    db.session.commit()
-                except SQLAlchemyError:
-                    abort(500, message="An error occurred while updating the parking.")
+        parkings = ParkingModel.query.filter(~ParkingModel.status.in_(["פעיל", "אין מידע"])).all()
+        parkings_with_distance = [(parking, calculate_distance(parking, lat, lon)) for parking in parkings]
+        closest_parkings = sorted(parkings_with_distance, key=lambda x: x[1])[:5]
 
-            time.sleep(1)
+        threads = []
+        for parking, distance in closest_parkings:
+            status_thread = GetStatusThread(parking.park_id)
+            status_thread.start()
+            threads.append(status_thread)
 
-            last_update_time = current_time
-            return {"message": "Statuses updated successfully."}, 200
-        else:
-            return {"message": "Statuses were updated recently."}, 200
+        returned_parkings = []
+        for thread in threads:
+            thread.join()
+            parking = ParkingModel.query.filter_by(park_id=thread.parking_id).first()
+            parking.status = thread.result
+            try:
+                db.session.add(parking)
+                db.session.commit()
+                parking.distance = calculate_distance(parking, lat, lon)
+                returned_parkings.append(parking)
+            except SQLAlchemyError:
+                abort(500, message="An error occurred while updating the parking.")
+
+        return returned_parkings
